@@ -1,0 +1,9 @@
+__pycache__/
+.idea/
+*.npz
+*.model
+*.vocab
+*.txt
+*.pkl
+*.attn
+*.hypo
