@@ -89,8 +89,8 @@ def main():
         dataset.save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
         dataset.save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
 
-        sos = np.array([src_vocab.vocab['<s>']], dtype=np.int32)
-        eos = np.array([src_vocab.vocab['</s>']], dtype=np.int32)
+        sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
 
     elif vocab_type == 'subword':
         src_vocab = dataset.VocabSubword()
@@ -102,15 +102,15 @@ def main():
             src_vocab.build(train_src_file, model_dir + 'src_vocab.sub', vocab_size)
             trg_vocab.build(train_trg_file, model_dir + 'trg_vocab.sub', vocab_size)
 
-        sos = np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32)
-        eos = np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32)
+        sos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('<s>')], dtype=np.int32), gpu_id)
+        eos = convert.convert_list(np.array([src_vocab.vocab.PieceToId('</s>')], dtype=np.int32), gpu_id)
 
     src_vocab_size = len(src_vocab.vocab)
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True)
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=True)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, include_label=True)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=True)
     valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=True)
     evaluater = evaluate.Evaluate(correct_txt_file)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=False)
@@ -158,7 +158,8 @@ def main():
         labels = []
         for i, batch in enumerate(test_iter.generate(), start=1):
             batch = convert.convert(batch, gpu_id)
-            output, label = model.predict(batch[0], sos, eos)
+            with chainer.no_backprop_mode(), chainer.using_config('train', False):
+                output, label = model.predict(batch[0], sos, eos)
             for o, l in zip(output, label):
                 outputs.append(trg_vocab.id2word(o))
                 labels.append(l)

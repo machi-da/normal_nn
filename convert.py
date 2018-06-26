@@ -12,3 +12,7 @@ def convert(batches, gpu_id=None):
         trg_eos.append(to_device(gpu_id, batch[2]))
         label.append(to_device(gpu_id, batch[3]))
     return src, trg_sos, trg_eos, label
+
+
+def convert_list(list_obj, gpu_id=None):
+    return to_device(gpu_id, list_obj)

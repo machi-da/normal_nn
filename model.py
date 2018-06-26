@@ -1,3 +1,4 @@
+import numpy as np
 import chainer
 from chainer import links as L
 from chainer import functions as F
@@ -165,7 +166,7 @@ class Multi(chainer.Chain):
             hs, cs, ys = self.wordDec(hs, cs, ys, enc_ys)
             ys = [self.xp.argmax(y.data, axis=1).astype(self.xp.int32) for y in ys]
             result.append(ys)
-        result = self.xp.concatenate([self.xp.expand_dims(x, 0) for x in result]).T
+        result = self.xp.concatenate([self.xp.expand_dims(self.xp.array(x, dtype=self.xp.int32), 0) for x in result]).T
         result = self.xp.reshape(result, (len(sources), -1))
 
         output = []
@@ -175,7 +176,7 @@ class Multi(chainer.Chain):
             r = l.data[:, 1]
             label.append(r)
         for r in result:
-            index = self.xp.argwhere(r == eos)
+            index = np.argwhere(r == eos)
             if len(index) > 0:
                 r = r[:index[0][0]]
             output.append(r)
