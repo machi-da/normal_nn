@@ -8,7 +8,7 @@ def convert(batches, gpu_id=None):
     label = []
     for batch in batches:
         src.append([to_device(gpu_id, b) for b in batch[0]])
-        trg_sos.append(batch[1])
-        trg_eos.append(batch[2])
-        label.append(batch[3])
+        trg_sos.append(to_device(gpu_id, batch[1]))
+        trg_eos.append(to_device(gpu_id, batch[2]))
+        label.append(to_device(gpu_id, batch[3]))
     return src, trg_sos, trg_eos, label

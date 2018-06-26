@@ -21,7 +21,7 @@ def load(file_name, include_label=False):
             label_lit.append(label)
         else:
             sentences = d.strip().split('|||')
-            label_lit.append([0 for _ in range(len(sentences))])
+            label_lit.append(np.array([0 for _ in range(len(sentences))], dtype=np.int32))
         for sentence in sentences:
             t.append(sentence.split(' '))
         text.append(t)
