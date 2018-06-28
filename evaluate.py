@@ -46,10 +46,11 @@ class Evaluate:
         for v in score_dic.values():
             if v[1] == 0:
                 v[1] = 1
-        num = ' '.join([str(round(v[0] / v[1], 3)) for k, v in score_dic.items()]) + '\t{}'.format(
-            round(t_correct / t, 3))
-        rate = ' '.join('{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()) + '\t{}/{}'.format(t_correct, t)
-        return num, rate
+        rate = [str(round(v[0] / v[1], 3)) for k, v in score_dic.items()]
+        rate.append(str(round(t_correct / t, 3)))
+        count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
+        count.append('{}/{}'.format(t_correct, t))
+        return rate, count
 
     def multiple(self, rank_list):
         score_dic = {2: [0, 0], 3: [0, 0], 4: [0, 0], 5: [0, 0], 6: [0, 0], 7: [0, 0]}
@@ -71,7 +72,8 @@ class Evaluate:
         for v in score_dic.values():
             if v[1] == 0:
                 v[1] = 1
-        num = ' '.join([str(round(v[0] / v[1], 3)) for k, v in score_dic.items()]) + '\t{}'.format(
-            round(t_correct / t, 3))
-        rate = ' '.join('{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()) + '\t{}/{}'.format(t_correct, t)
-        return num, rate
+        rate = [str(round(v[0] / v[1], 3)) for k, v in score_dic.items()]
+        rate.append(str(round(t_correct / t, 3)))
+        count = ['{}/{}'.format(v[0], v[1]) for k, v in score_dic.items()]
+        count.append('{}/{}'.format(t_correct, t))
+        return rate, count

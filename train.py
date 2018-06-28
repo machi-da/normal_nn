@@ -5,6 +5,7 @@ import glob
 import logging
 from logging import getLogger
 import numpy as np
+import traceback
 
 import convert
 import dataset
@@ -109,11 +110,11 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, include_label=True)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=True)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=True)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     evaluater = evaluate.Evaluate(correct_txt_file)
-    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, include_label=False)
+    test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
     model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
     """OPTIMIZER"""
@@ -129,18 +130,27 @@ def main():
     """TRAIN"""
     sum_loss = 0
     loss_dic = {}
+    result = []
     for epoch in range(1, n_epoch + 1):
         for i, batch in enumerate(train_iter.generate(), start=1):
-            batch = convert.convert(batch, gpu_id)
-            loss = optimizer.target(*batch)
-            sum_loss += loss.data
-            optimizer.target.cleargrads()
-            loss.backward()
-            optimizer.update()
+            try:
+                batch = convert.convert(batch, gpu_id)
+                loss = optimizer.target(*batch)
+                sum_loss += loss.data
+                optimizer.target.cleargrads()
+                loss.backward()
+                optimizer.update()
 
-            if i % interval == 0:
-                logger.info('E{} ## iteration:{}, loss:{}'.format(epoch, i, sum_loss))
-                sum_loss = 0
+                if i % interval == 0:
+                    logger.info('E{} ## iteration:{}, loss:{}'.format(epoch, i, sum_loss))
+                    sum_loss = 0
+
+            except Exception as e:
+                logger.info(traceback.format_exc())
+                logger.info('iteration: {}'.format(i))
+                for b in batch[0]:
+                    for bb in b:
+                        logger.info(src_vocab.id2word(bb))
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
         # chainer.serializers.save_npz(model_dir + 'optimizer_epoch{0}.npz'.format(epoch), optimizer)
 
@@ -164,22 +174,26 @@ def main():
                 outputs.append(trg_vocab.id2word(o))
                 labels.append(l)
         rank_list = evaluater.rank(labels)
-        single = evaluater.single(rank_list)
-        multiple = evaluater.multiple(rank_list)
-        logger.info('E{} ## s: {} | {}'.format(epoch, single[0], single[1]))
-        logger.info('E{} ## m: {} | {}'.format(epoch, multiple[0], multiple[1]))
+        s_rate, s_count = evaluater.single(rank_list)
+        m_rate, m_count = evaluater.multiple(rank_list)
+        logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
+        logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
         with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
             [f.write(o + '\n') for o in outputs]
         with open(model_dir + 'model_epoch_{}.attn'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
 
-
+        result.append('{},{},{},{}'.format(epoch, valid_loss, s_rate[-1], m_rate[-1]))
 
     """MODEL SAVE"""
     best_epoch = min(loss_dic, key=(lambda x: loss_dic[x]))
     logger.info('best_epoch:{0}'.format(best_epoch))
     chainer.serializers.save_npz(model_dir + 'best_model.npz', model)
+
+    with open(model_dir + 'result.csv', 'w')as f:
+        f.write('epoch,valid_loss,single,multiple\n')
+        [f.write(r + '\n') for r in result]
 
 
 if __name__ == '__main__':

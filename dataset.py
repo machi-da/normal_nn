@@ -6,22 +6,28 @@ from collections import Counter
 import random
 
 
-def load(file_name, include_label=False):
+def load(file_name):
+    text = []
+    with open(file_name)as f:
+        data = f.readlines()
+    for d in data:
+        text.append(d.strip().split(' '))
+    return text
+
+
+def load_with_label(file_name):
     label_lit = []
     text = []
     with open(file_name)as f:
         data = f.readlines()
     for d in data:
         t = []
-        if include_label:
-            label, sentences = d.strip().split('\t')
-            sentences = sentences.split('|||')
-            l_index = [int(l)-1 for l in label.split(',')]
-            label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.int32)
-            label_lit.append(label)
-        else:
-            sentences = d.strip().split('|||')
-            label_lit.append(np.array([0 for _ in range(len(sentences))], dtype=np.int32))
+        label, sentences = d.strip().split('\t')
+        sentences = sentences.split('|||')
+        l_index = [int(l)-1 for l in label.split(',')]
+        label = np.array([1 if i in l_index else 0 for i in range(len(sentences))], dtype=np.int32)
+        label_lit.append(label)
+
         for sentence in sentences:
             t.append(sentence.split(' '))
         text.append(t)
@@ -53,8 +59,11 @@ class VocabNormal:
     def build(self, file_name, include_label, initial_vocab, vocab_size, freq=0):
         self.vocab = self._build_vocab(file_name, include_label, initial_vocab, vocab_size, freq)
 
-    def _build_vocab(self, file_name, include_label, initial_vocab, vocab_size, freq=0):
-        _, documents = load(file_name, include_label=include_label)
+    def _build_vocab(self, file_name, with_label, initial_vocab, vocab_size, freq=0):
+        if with_label:
+            _, documents = load_with_label(file_name)
+        else:
+            documents = load(file_name)
 
         vocab = copy.copy(initial_vocab)
         word_count = Counter()
@@ -144,9 +153,9 @@ class VocabSubword:
 
 
 class Iterator:
-    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, include_label=True):
-        self.label, self.src = load(src_file, include_label)
-        _, self.trg = load(trg_file)
+    def __init__(self, src_file, trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True):
+        self.label, self.src = load_with_label(src_file)
+        self.trg = load(trg_file)
 
         self.src_vocab = src_vocab
         self.trg_vocab = trg_vocab
@@ -199,68 +208,6 @@ class Iterator:
                 if not batch:
                     continue
                 yield batch
-
-
-
-
-"""
-def make_vocab_sp(text_file, model_name, vocab_size):
-    args = '''
-            --control_symbols=<eod> 
-            --input={} 
-            --model_prefix={} 
-            --vocab_size={} 
-            --hard_vocab_limit=false'''\
-        .format(text_file, model_name, vocab_size)
-    spm.SentencePieceTrainer.Train(args)
-    sp = spm.SentencePieceProcessor()
-    sp.Load(model_name + '.model')
-    return sp
-
-
-class VocabSubword:
-    def __init__(self):
-        self.src_vocab = None
-        self.trg_vocab = None
-
-    def make_vocab(self, src_file, trg_file, save_dir, vocab_size):
-        self.src_vocab = make_vocab_sp(src_file, save_dir + 'src_vocab.subword', vocab_size)
-        self.trg_vocab = make_vocab_sp(trg_file, save_dir + 'trg_vocab.subword', vocab_size)
-
-    def load_vocab(self, src_vocab_file, trg_vocab_file):
-        src_sp = spm.SentencePieceProcessor()
-        trg_sp = spm.SentencePieceProcessor()
-        src_sp.Load(src_vocab_file)
-        trg_sp.Load(trg_vocab_file)
-        self.src_vocab = src_sp
-        self.trg_vocab = trg_sp
-
-    def convert2label(self, data):
-        src_sp = self.src_vocab
-        trg_sp = self.trg_vocab
-
-        dataset_label = []
-        for d in data:
-            src, trg = d[0], d[1]
-            src =     [self._convert2label(' '.join(sentence), src_sp, eos=src_sp.PieceToId('</s>')) for sentence in src]
-            trg_sos = [self._convert2label(' '.join(sentence), trg_sp, sos=trg_sp.PieceToId('<s>')) for sentence in trg]
-            trg_eos = [self._convert2label(' '.join(sentence), trg_sp, eos=trg_sp.PieceToId('</s>')) for sentence in trg]
-            src[-1][-1] = src_sp.PieceToId('<eod>')
-            trg_eos[-1][-1] = trg_sp.PieceToId('<eod>')
-            dataset_label.append((src, trg_sos, trg_eos))
-        return dataset_label
-
-    def _convert2label(self, words, sp, sos=None, eos=None):
-        word_labels = sp.EncodeAsIds(words)
-        if sos is not None:
-            word_labels.insert(0, sos)
-        if eos is not None:
-            word_labels.append(eos)
-        return np.array(word_labels, dtype=np.int32)
-
-    def label2word(self, sentence):
-        return self.trg_vocab.DecodeIds(sentence)
-"""
 
 
 if __name__ == '__main__':
