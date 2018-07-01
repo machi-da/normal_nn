@@ -81,14 +81,19 @@ def main():
     logger.info('train size: {0}, valid size: {1}'.format(train_data_size, valid_data_size))
 
     if vocab_type == 'normal':
-        init_vocab = {'<unk>': 0, '<s>': 1, '</s>': 2}
         src_vocab = dataset.VocabNormal()
-        src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
         trg_vocab = dataset.VocabNormal()
-        trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
+        if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
+            src_vocab.load(model_dir + 'src_vocab.normal.pkl')
+            trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
+        else:
+            init_vocab = {'<unk>': 0, '<s>': 1, '</s>': 2}
+            src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
+            trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
+            dataset.save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
+            dataset.save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
+        src_vocab.set_reverse_vocab()
         trg_vocab.set_reverse_vocab()
-        dataset.save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
-        dataset.save_pickle(model_dir + 'trg_vocab.normal.pkl', trg_vocab.vocab)
 
         sos = convert.convert_list(np.array([src_vocab.vocab['<s>']], dtype=np.int32), gpu_id)
         eos = convert.convert_list(np.array([src_vocab.vocab['</s>']], dtype=np.int32), gpu_id)
@@ -178,7 +183,7 @@ def main():
         m_rate, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-
+        print(outputs)
         with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
             [f.write(o + '\n') for o in outputs]
         with open(model_dir + 'model_epoch_{}.attn'.format(epoch), 'w')as f:
