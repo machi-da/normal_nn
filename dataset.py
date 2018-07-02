@@ -60,23 +60,30 @@ class VocabNormal:
         self.vocab = self._build_vocab(file_name, include_label, initial_vocab, vocab_size, freq)
 
     def _build_vocab(self, file_name, with_label, initial_vocab, vocab_size, freq=0):
-        if with_label:
-            _, documents = load_with_label(file_name)
-        else:
-            documents = load(file_name)
-
         vocab = copy.copy(initial_vocab)
         word_count = Counter()
         words = []
-        for i, doc in enumerate(documents):
-            for sentence in doc:
-                words.extend(sentence)
-            # 10000文書ごとにCounterへ渡す
-            if i % 10000 == 0:
+
+        if with_label:
+            _, documents = load_with_label(file_name)
+
+            for i, doc in enumerate(documents):
+                for sentence in doc:
+                    words.extend(sentence)
+                # 10000文書ごとにCounterへ渡す
+                if i % 10000 == 0:
+                    word_count += Counter(words)
+                    words = []
+            else:
                 word_count += Counter(words)
-                words = []
+
         else:
-            word_count += Counter(words)
+            documents = load(file_name)
+
+            for doc in documents:
+                words.extend(doc)
+
+            word_count = Counter(words)
 
         for w, c in word_count.most_common():
             if len(vocab) >= vocab_size:

@@ -176,6 +176,7 @@ def main():
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 output, label = model.predict(batch[0], sos, eos)
             for o, l in zip(output, label):
+                o = chainer.cuda.to_cpu(o)
                 outputs.append(trg_vocab.id2word(o))
                 labels.append(l)
         rank_list = evaluater.rank(labels)
@@ -183,7 +184,7 @@ def main():
         m_rate, m_count = evaluater.multiple(rank_list)
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
-        print(outputs)
+
         with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
             [f.write(o + '\n') for o in outputs]
         with open(model_dir + 'model_epoch_{}.attn'.format(epoch), 'w')as f:
