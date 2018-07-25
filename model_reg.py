@@ -46,7 +46,7 @@ class SentEncoder(chainer.Chain):
         hy, cyの処理
         left-to-rightとright-to-leftの隠れ状態をsumしている
         shape:(2*layer数, batch, hidden) -> (batch, hidden)
-        
+
         ysの処理
         ysはbatchサイズのリスト
         shape:(文数, 2*hidden) -> reshape:(文数, 2, hidden) -> sum:(文数, hidden)
@@ -112,13 +112,14 @@ class LabelClassifier(chainer.Chain):
 
         # 各文ベクトルにdocumentベクトルをconcat
         # x:(batch_size, hidden_size), d:(,hidden_size)なので次元を合わせるためbroadcast_toでd:(batch_size, hidden_size)へ変換
-        xs_proj = [self.proj(F.dropout(F.concat((x, F.broadcast_to(d, x.shape)), axis=1), self.dropout)) for x, d in zip(xs, doc_vec)]
+        xs_proj = [self.proj(F.dropout(F.concat((x, F.broadcast_to(d, x.shape)), axis=1), self.dropout)) for x, d in
+                   zip(xs, doc_vec)]
         return xs_proj
 
 
-class Multi(chainer.Chain):
+class MultiReg(chainer.Chain):
     def __init__(self, src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout, coefficient):
-        super(Multi, self).__init__()
+        super(MultiReg, self).__init__()
         with self.init_scope():
             self.wordEnc = WordEncoder(src_vocab_size, embed_size, hidden_size, dropout)
             self.sentEnc = SentEncoder(hidden_size, dropout)
@@ -132,9 +133,9 @@ class Multi(chainer.Chain):
         hs, cs, enc_ys = self.encode(sources)
         label_proj = self.labelClassifier(enc_ys, hs)
 
-        concat_label_proj = F.concat(label_proj, axis=0)
+        concat_label_proj = F.concat(F.concat(label_proj, axis=0), axis=0)
         concat_label_gold = F.concat(label_gold, axis=0)
-        loss_label = self.lossfun(concat_label_proj, concat_label_gold)
+        loss_label = F.mean_squared_error(concat_label_proj, concat_label_gold)
 
         return loss_label
 
@@ -182,14 +183,13 @@ class Multi(chainer.Chain):
         #         attn_score.append(alignment[0][0])
         #         sentence.append(word)
         #     else:
-        #         attn_score = self.xp.sum(self.xp.array(attn_score, dtype=self.xp.float32), axis=0) / i
+        #         attn_score = self.xp.sum(attn_score, axis=0) / i
         #     sentences.append(self.xp.hstack(sentence[1:]))
         #     alignments.append(attn_score)
 
         label = []
         for l in label_proj:
-            l = F.softmax(l)
-            l = l.data[:, 1]
+            l = F.softmax(l.T).data[0]
             label.append(l)
 
         return sentences, label

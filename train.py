@@ -11,6 +11,7 @@ import convert
 import dataset
 import evaluate
 from model import Multi
+from model_reg import MultiReg
 
 # os.environ["CHAINER_TYPE_CHECK"] = "0"
 import chainer
@@ -21,8 +22,9 @@ def parse_args():
     parser.add_argument('model_dir')
     parser.add_argument('--batch', '-b', type=int, default=32)
     parser.add_argument('--epoch', '-e', type=int, default=20)
-    parser.add_argument('--interval', '-i', type=int, default=10000)
+    parser.add_argument('--interval', '-i', type=int, default=100000)
     parser.add_argument('--gpu', '-g', type=int, default=-1)
+    parser.add_argument('--type', '-t', choices=['l', 'lr', 's', 'sr'], default='l')
     args = parser.parse_args()
     return args
 
@@ -68,26 +70,35 @@ def main():
     n_epoch = args.epoch
     batch_size = args.batch
     interval = args.interval
+    reg = False if args.type == 'l' or args.type == 's' else True
     """DATASET"""
-    train_src_file = config['Dataset']['train_src_file']
-    train_trg_file = config['Dataset']['train_trg_file']
-    valid_src_file = config['Dataset']['valid_src_file']
-    valid_trg_file = config['Dataset']['valid_trg_file']
-    test_src_file = config['Dataset']['test_src_file']
-    correct_txt_file = config['Dataset']['correct_txt_file']
+    if args.type == 'l':
+        section = 'Local'
+    elif args.type == 'lr':
+        section = 'Local_Reg'
+    elif args.type == 's':
+        section = 'Server'
+    else:
+        section = 'Server_Reg'
+    train_src_file = config[section]['train_src_file']
+    train_trg_file = config[section]['train_trg_file']
+    valid_src_file = config[section]['valid_src_file']
+    valid_trg_file = config[section]['valid_trg_file']
+    test_src_file = config[section]['test_src_file']
+    correct_txt_file = config[section]['correct_txt_file']
 
     train_data_size = dataset.data_size(train_src_file)
     valid_data_size = dataset.data_size(valid_src_file)
     logger.info('train size: {0}, valid size: {1}'.format(train_data_size, valid_data_size))
 
     if vocab_type == 'normal':
-        src_vocab = dataset.VocabNormal()
-        trg_vocab = dataset.VocabNormal()
+        src_vocab = dataset.VocabNormal(reg)
+        trg_vocab = dataset.VocabNormal(reg)
         if os.path.isfile(model_dir + 'src_vocab.normal.pkl') and os.path.isfile(model_dir + 'trg_vocab.normal.pkl'):
             src_vocab.load(model_dir + 'src_vocab.normal.pkl')
             trg_vocab.load(model_dir + 'trg_vocab.normal.pkl')
         else:
-            init_vocab = {'<unk>': 0, '<s>': 1, '</s>': 2}
+            init_vocab = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
             src_vocab.build(train_src_file, True,  init_vocab, vocab_size)
             trg_vocab.build(train_trg_file, False, init_vocab, vocab_size)
             dataset.save_pickle(model_dir + 'src_vocab.normal.pkl', src_vocab.vocab)
@@ -115,13 +126,17 @@ def main():
     trg_vocab_size = len(trg_vocab.vocab)
     logger.info('src_vocab size: {}, trg_vocab size: {}'.format(src_vocab_size, trg_vocab_size))
 
-    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True)
-    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
-    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
+    train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=True, shuffle=True, reg=reg)
+    # train_iter = dataset.Iterator(train_src_file, train_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
+    valid_iter = dataset.Iterator(valid_src_file, valid_trg_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False, reg=reg)
     evaluater = evaluate.Evaluate(correct_txt_file)
     test_iter = dataset.Iterator(test_src_file, test_src_file, src_vocab, trg_vocab, batch_size, sort=False, shuffle=False)
     """MODEL"""
-    model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+    if reg:
+        class_size = 1
+        model = MultiReg(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
+    else:
+        model = Multi(src_vocab_size, trg_vocab_size, embed_size, hidden_size, class_size, dropout_ratio, coefficient)
     """OPTIMIZER"""
     optimizer = chainer.optimizers.Adam()
     optimizer.setup(model)
@@ -157,7 +172,6 @@ def main():
                     for bb in b:
                         logger.info(src_vocab.id2word(bb))
         chainer.serializers.save_npz(model_dir + 'model_epoch_{}.npz'.format(epoch), model)
-        # chainer.serializers.save_npz(model_dir + 'optimizer_epoch{0}.npz'.format(epoch), optimizer)
 
         """EVALUATE"""
         valid_loss = 0
@@ -175,9 +189,11 @@ def main():
             batch = convert.convert(batch, gpu_id)
             with chainer.no_backprop_mode(), chainer.using_config('train', False):
                 output, label = model.predict(batch[0], sos, eos)
-            for o, l in zip(output, label):
-                o = chainer.cuda.to_cpu(o)
-                outputs.append(trg_vocab.id2word(o))
+            # for o, l in zip(output, label):
+            #     o = chainer.cuda.to_cpu(o)
+            #     outputs.append(trg_vocab.id2word(o))
+            #     labels.append(l)
+            for l in label:
                 labels.append(l)
         rank_list = evaluater.rank(labels)
         s_rate, s_count = evaluater.single(rank_list)
@@ -185,8 +201,8 @@ def main():
         logger.info('E{} ## s: {} | {}'.format(epoch, ' '.join(x for x in s_rate), ' '.join(x for x in s_count)))
         logger.info('E{} ## m: {} | {}'.format(epoch, ' '.join(x for x in m_rate), ' '.join(x for x in m_count)))
 
-        with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
-            [f.write(o + '\n') for o in outputs]
+        # with open(model_dir + 'model_epoch_{}.hypo'.format(epoch), 'w')as f:
+        #     [f.write(o + '\n') for o in outputs]
         with open(model_dir + 'model_epoch_{}.attn'.format(epoch), 'w')as f:
             [f.write('{}\n'.format(l)) for l in labels]
 
